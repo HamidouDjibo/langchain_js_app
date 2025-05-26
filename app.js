@@ -1,39 +1,58 @@
+process.env.NODE_OPTIONS = '--no-warnings'; // Supprime tous les warnings
+
 import "dotenv/config";
 import { ChatOpenAI } from "@langchain/openai";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { Document } from "langchain/document";
+import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { loadQAStuffChain } from "langchain/chains";
+import { Document } from "langchain/document";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
 
 async function main() {
-  console.log("Using API URL:", process.env.OPENAI_API_BASE_URL);
-
   const llm = new ChatOpenAI({
-    modelName: "llama-3.2-1b-instruct",
-    temperature: 0.5,
-    openAIApiKey: "sk-anykey", // Clé factice nécessaire
-    configuration: {
-      baseURL: process.env.OPENAI_API_BASE_URL
+    modelName: "llama3-1b-instruct",
+    openAIApiKey: "sk-any",
+    configuration: { baseURL: "http://localhost:1234/v1" },
+    maxRetries: 1 // Réduit les logs superflus
+  });
+
+  // Chargement PDF + mapping des polices inconnues
+  const loader = new PDFLoader("test.pdf", {
+    pdfjsOptions: {
+      standardFontDataUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/"
     }
   });
+  
+  const docs = await loader.load();
+  
+  // Découpage
+  const splitter = new RecursiveCharacterTextSplitter({
+    chunkSize: 1000,
+    chunkOverlap: 200,
+  });
+  const splitDocs = await splitter.splitDocuments(docs);
 
+  // Ajout info personnalisée
+  splitDocs.push(new Document({
+    pageContent: "Hamidou Djibo a pour sport préféré le football"
+  }));
+
+  // Prompt
   const prompt = ChatPromptTemplate.fromTemplate(`
-    Réponds à la question en utilisant le contexte.
-    Contexte : {context}
-    Question : {input}
+    Réponds en français aux questions de l'utilisateur en utlisant le context si besoin avec style télégraphique :
+    Contexte: {context}
+    Question: {input}
+    Réponse concise:
   `);
 
-  const infosHamid = new Document({
-    pageContent: "Hamidou Djibo à pour sport préféré le football",
-  });
-
+  // Exécution
   const chain = loadQAStuffChain(llm, { prompt });
-  
-  const result = await chain.call({
-    input_documents: [infosHamid],
-    input: "Quel est le sport préféré de Djibo Hamidou  ?"
+  const response = await chain.invoke({
+    input_documents: splitDocs,
+    input: "quelle est la filiere de bladou affoué"
   });
 
-  console.log(result.text);
+  console.log("🦙 Réponse :", response.text);
 }
 
 main().catch(console.error);
