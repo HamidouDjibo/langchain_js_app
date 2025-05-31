@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Chatbot RAG Local</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="chat-box" id="chatBox"></div>
+        
+        <div class="input-area">
+            <input type="file" id="pdfUpload" accept=".pdf" hidden>
+            <button onclick="document.getElementById('pdfUpload').click()">📁 Upload PDF</button>
+            
+            <input type="text" id="userInput" placeholder="Tapez votre question...">
+            <button onclick="sendMessage()">➤</button>
+        </div>
+    </div>
+
+    <script src="frontend.js"></script>
+</body>
+</html>
