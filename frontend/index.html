@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hermes RAG - Chatbot Local</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🦉 Hermes RAG Local</h1>
+        
+        <div class="chat-box" id="chatBox">
+            <!-- Messages apparaîtront ici -->
+        </div>
+
+        <div class="input-area">
+            <label class="upload-btn">
+                📁 Charger PDF
+                <input type="file" id="pdfUpload" accept=".pdf" hidden>
+            </label>
+            
+            <button id="resetBtn" class="reset-btn" title="Supprimer le document et revenir au mode général">
+                🗑️ Supprimer document
+            </button>
+            
+            <div class="input-group">
+                <input type="text" id="userInput" placeholder="Votre question...">
+                <button onclick="sendMessage()">Envoyer</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="frontend.js"></script>
+</body>
+</html>
