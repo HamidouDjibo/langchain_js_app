@@ -6,6 +6,8 @@ import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { loadQAStuffChain } from "langchain/chains";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { OllamaEmbeddings } from "@langchain/community/embeddings/ollama";
+import { MemoryVectorStore } from "langchain/vectorstores/memory"; // Changé ici
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -15,9 +17,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadDir = path.join(__dirname, 'uploads');
 
+// Création du dossier uploads s'il n'existe pas
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
-  console.log(`📁 Dossier uploads créé : ${uploadDir}`);
+  console.log(`Dossier créé : ${uploadDir}`);
 }
 
 const app = express();
@@ -27,8 +30,6 @@ app.use(fileUpload({
   useTempFiles: false
 }));
 app.use(express.json());
-
-let splitDocs = [];
 
 // Configuration LLM Hermes via LM Studio
 const llm = new ChatOpenAI({
@@ -41,17 +42,32 @@ const llm = new ChatOpenAI({
   maxTokens: 1000
 });
 
-// Configuration du splitter
-const splitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 1200,
-  chunkOverlap: 300,
-  separators: ["\n\n", "\n", ". ", "! ", "? "]
+// Configuration des embeddings avec nomic-embed-text
+const embeddings = new OllamaEmbeddings({
+  model: "nomic-embed-text", // Ajouté pour plus de clarté
+  baseUrl: "http://localhost:11434",
+  embeddingDimensions: 768,
+  requestOptions: {
+    numThread: 4,
+    useMMap: true
+  }
 });
+
+// Configuration optimisée du splitter pour les embeddings
+const splitter = new RecursiveCharacterTextSplitter({
+  chunkSize: 512,
+  chunkOverlap: 128,
+  separators: ["\n\n", "\n", ". ", "! ", "? ", "。", "？", "！"],
+  keepSeparator: true
+});
+
+// Stockage du vector store
+let vectorStore = null;
 
 // Prompt pour mode RAG (avec document)
 const ragPrompt = ChatPromptTemplate.fromTemplate(`
   <|im_start|>system
-  Vous êtes un assistant expert en analyse documentaire. Répondez précisement et clairement en français en utilisant si fourni le contexte suivant.<|im_end|>
+  Vous êtes un assistant expert en analyse documentaire. Répondez précisement et clairement en français en utilisant le contexte fourni.<|im_end|>
   
   <|im_start|>context
   {context}<|im_end|>
@@ -85,7 +101,7 @@ app.post('/upload', async (req, res) => {
     const filePath = path.join(uploadDir, fileName);
 
     await pdfFile.mv(filePath);
-    console.log(`✅ Fichier sauvegardé : ${filePath}`);
+    console.log(`Fichier sauvegardé : ${filePath}`);
 
     // Chargement du PDF
     const loader = new PDFLoader(filePath, {
@@ -95,7 +111,15 @@ app.post('/upload', async (req, res) => {
     });
     
     const docs = await loader.load();
-    splitDocs = await splitter.splitDocuments(docs);
+    const splitDocs = await splitter.splitDocuments(docs);
+    
+    // Création du vector store avec MemoryVectorStore
+    vectorStore = await MemoryVectorStore.fromDocuments(
+      splitDocs,
+      embeddings
+    );
+    
+    console.log(`Vector store créé avec ${splitDocs.length} chunks`);
     
     res.json({ 
       success: true, 
@@ -104,7 +128,7 @@ app.post('/upload', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('❌ Erreur upload:', err);
+    console.error('Erreur création vector store:', err);
     res.status(500).json({
       error: `Échec du traitement du PDF: ${err.message}`,
       details: process.env.NODE_ENV === 'development' ? err.stack : undefined
@@ -115,25 +139,28 @@ app.post('/upload', async (req, res) => {
 // Endpoint de réinitialisation
 app.post('/reset', (req, res) => {
   try {
-    const previousCount = splitDocs.length;
-    splitDocs = [];
+    // Réinitialiser le vector store
+    const previousState = vectorStore ? "Vector store présent" : "Aucun vector store";
+    vectorStore = null;
     
-    // Suppression physique des fichiers
+    // Suppression physique des fichiers uploadés seulement
     if (req.body.deleteFiles) {
+      // Supprimer les fichiers uploadés
       fs.readdirSync(uploadDir).forEach(file => {
         fs.unlinkSync(path.join(uploadDir, file));
       });
-      console.log(`🗑️ Supprimé tous les fichiers dans ${uploadDir}`);
+      
+      console.log(`Supprimé tous les fichiers dans ${uploadDir}`);
     }
     
     res.json({
       success: true,
-      message: `Documents réinitialisés (${previousCount} documents supprimés)`,
+      message: `Système réinitialisé (${previousState})`,
       mode: "Général"
     });
     
   } catch (err) {
-    console.error('❌ Erreur reset:', err);
+    console.error('Erreur reset:', err);
     res.status(500).json({
       error: "Échec de la réinitialisation",
       details: err.message
@@ -149,20 +176,21 @@ app.post('/chat', async (req, res) => {
       return res.status(400).json({ error: "Question vide" });
     }
 
-    // Mode RAG si documents chargés
-    if (splitDocs.length > 0) {
-      const ragChain = loadQAStuffChain(llm, { prompt: ragPrompt });
-      const inputDocs = splitDocs.slice(0, 5);
+    // Mode RAG si vector store existe
+    if (vectorStore) {
+      // Recherche des documents pertinents
+      const relevantDocs = await vectorStore.similaritySearch(question, 3);
       
+      const ragChain = loadQAStuffChain(llm, { prompt: ragPrompt });
       const result = await ragChain.call({
-        input_documents: inputDocs,
+        input_documents: relevantDocs,
         input: question
       });
 
       return res.json({ 
         response: result.text,
         mode: "RAG",
-        sources: [...new Set(inputDocs.map(d => d.metadata?.source || 'source inconnue'))]
+        sources: [...new Set(relevantDocs.map(d => d.metadata?.source || 'source inconnue'))]
       });
     } 
     // Mode général sans documents
@@ -181,7 +209,12 @@ app.post('/chat', async (req, res) => {
     }
 
   } catch (err) {
-    console.error('❌ Erreur chat:', err);
+    console.error('Erreur chat:', {
+      message: err.message,
+      stack: err.stack,
+      question: req.body?.question
+    });
+    
     res.status(500).json({
       error: "Erreur de traitement de la question",
       details: process.env.NODE_ENV === 'development' ? err.message : undefined
@@ -190,7 +223,11 @@ app.post('/chat', async (req, res) => {
 });
 
 app.listen(3000, () => {
-  console.log('🚀 Serveur Hermes RAG sur http://localhost:3000');
-  console.log(`📂 Dossier uploads: ${uploadDir}`);
+  console.log('Serveur Hermes RAG sur http://localhost:3000');
+  console.log(`Dossier uploads: ${uploadDir}`);
   console.log('Endpoints: /upload [POST], /chat [POST], /reset [POST]');
+  console.log('Configuration:');
+  console.log('- LLM: Hermes-3.2-3B via LM Studio (localhost:1234)');
+  console.log('- Embeddings: nomic-embed-text via Ollama (localhost:11434)');
+  console.log('- Vector store: MemoryVectorStore (en mémoire)');
 });
