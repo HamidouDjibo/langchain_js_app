@@ -1,5 +1,19 @@
-# Dossier des dépendances
+﻿# Dépendances Node.js
 node_modules/
 
-# Variables d'environnement
+# Variables d'environnement et clés API
 .env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Fichiers PDF importés et stockages vectoriels locaux
+backend/uploads/
+backend/vector-stores/
+
+# Fichiers temporaires, logs et système
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
