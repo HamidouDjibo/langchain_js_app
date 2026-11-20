@@ -3,32 +3,136 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hermes RAG - Chatbot Local</title>
+    <title>Hermes RAG Studio — Assistant IA Local</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>🦉 Hermes RAG Local</h1>
-        
-        <div class="chat-box" id="chatBox">
-            <!-- Messages apparaîtront ici -->
-        </div>
-
-        <div class="input-area">
-            <label class="upload-btn">
-                📁 Charger PDF
-                <input type="file" id="pdfUpload" accept=".pdf" hidden>
-            </label>
-            
-            <button id="resetBtn" class="reset-btn" title="Supprimer le document et revenir au mode général">
-                🗑️ Supprimer document
-            </button>
-            
-            <div class="input-group">
-                <input type="text" id="userInput" placeholder="Votre question...">
-                <button onclick="sendMessage()">Envoyer</button>
+    <div class="app-layout">
+        <!-- Barre latérale : Statut, Document & Stack Technique -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">🦉</div>
+                <div class="brand-text">
+                    <h1>Hermes RAG</h1>
+                    <span>Local AI Workspace</span>
+                </div>
             </div>
-        </div>
+
+            <!-- Indicateur de mode actif -->
+            <div class="status-card">
+                <div class="status-header">
+                    <span class="section-label">Statut du pipeline</span>
+                    <span id="modeBadge" class="mode-badge mode-general">
+                        <span class="status-dot"></span>
+                        <span id="modeText">Mode Général</span>
+                    </span>
+                </div>
+                <p id="modeDescription" class="status-desc">
+                    Conversation libre avec le modèle local sans contexte documentaire.
+                </p>
+            </div>
+
+            <!-- Gestion du document PDF -->
+            <div class="doc-section">
+                <span class="section-label">Base de connaissances (PDF)</span>
+
+                <!-- Zone d'upload par clic ou glisser-déposer -->
+                <label id="dropZone" class="drop-zone" for="pdfUpload">
+                    <div class="drop-icon">📄</div>
+                    <div class="drop-title">Importer un document PDF</div>
+                    <div class="drop-subtitle">Cliquez ou glissez-déposez (max. 50 Mo)</div>
+                    <input type="file" id="pdfUpload" accept=".pdf" hidden>
+                </label>
+
+                <!-- Carte du document chargé (masquée par défaut) -->
+                <div id="activeDocCard" class="active-doc-card hidden">
+                    <div class="doc-info">
+                        <div class="doc-icon-badge">PDF</div>
+                        <div class="doc-meta">
+                            <div id="docName" class="doc-name" title="">document.pdf</div>
+                            <div id="docChunks" class="doc-chunks">0 segments indexés</div>
+                        </div>
+                    </div>
+                    <button id="resetBtn" class="reset-btn" title="Supprimer le document et revenir au mode général">
+                        🗑️ Retirer le document
+                    </button>
+                </div>
+            </div>
+
+            <!-- Carte d'architecture (valorise le projet sur les captures portfolio) -->
+            <div class="tech-stack-card">
+                <span class="section-label">Architecture Locale</span>
+                <ul class="tech-list">
+                    <li>
+                        <span class="tech-key">LLM</span>
+                        <span class="tech-val">Hermes-3-Llama-3.2-3B</span>
+                    </li>
+                    <li>
+                        <span class="tech-key">Embeddings</span>
+                        <span class="tech-val">nomic-embed-text (768d)</span>
+                    </li>
+                    <li>
+                        <span class="tech-key">Vector Store</span>
+                        <span class="tech-val">MemoryVectorStore</span>
+                    </li>
+                    <li>
+                        <span class="tech-key">Orchestration</span>
+                        <span class="tech-val">LangChain JS + Express</span>
+                    </li>
+                </ul>
+            </div>
+        </aside>
+
+        <!-- Zone principale de discussion -->
+        <main class="chat-main">
+            <header class="chat-header">
+                <div>
+                    <h2>Assistant Documentaire & Conversationnel</h2>
+                    <p>100 % local • Aucune donnée envoyée vers le cloud</p>
+                </div>
+                <button id="clearChatBtn" class="secondary-btn" title="Effacer l'affichage des messages">
+                    Effacer l'écran
+                </button>
+            </header>
+
+            <div class="chat-box" id="chatBox">
+                <!-- Les messages s'affichent ici -->
+            </div>
+
+            <!-- Suggestions rapides -->
+            <div class="suggestions-bar" id="suggestionsBar">
+                <button type="button" class="suggestion-chip" data-prompt="Résume les points clés de ce document.">
+                    ✨ Résumer le document
+                </button>
+                <button type="button" class="suggestion-chip" data-prompt="Quelles sont les conclusions principales présentées ?">
+                    📌 Conclusions principales
+                </button>
+                <button type="button" class="suggestion-chip" data-prompt="Explique-moi le fonctionnement d'une architecture RAG en 3 étapes.">
+                    🧠 Comment fonctionne le RAG ?
+                </button>
+            </div>
+
+            <!-- Zone de saisie -->
+            <footer class="input-container">
+                <div class="input-wrapper">
+                    <textarea
+                        id="userInput"
+                        rows="1"
+                        placeholder="Posez votre question (Entrée pour envoyer, Maj+Entrée pour une ligne)..."
+                    ></textarea>
+                    <button id="sendBtn" class="send-btn" title="Envoyer la question">
+                        <span>Envoyer</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+            </footer>
+        </main>
     </div>
 
     <script src="frontend.js"></script>
